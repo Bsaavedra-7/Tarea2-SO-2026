@@ -1,3 +1,7 @@
+#include "control_rw.hpp"
+#include <atomic>
+#include <cstdint>
+
 /* 
 modo atomic
 
@@ -8,3 +12,5 @@ y el static_assert que garantiza que sea lock-free
 
 
 */
+
+static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
