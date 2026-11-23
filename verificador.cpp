@@ -1,3 +1,7 @@
+#include "verificador.hpp"
+
+thread_local int id_hebra = -1;
+
 /* 
 R6
 

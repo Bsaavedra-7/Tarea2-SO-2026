@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 
 /* 
@@ -19,11 +21,20 @@ enum class Tipo { Lectora, Escritora };
 enum class Accion { Pide, Entra, Sale };
 
 struct AnotacionTraza {
-    int hebra;      // identificador de la hebra
+    int hebra;
     Tipo tipo;
     Accion accion;
-    long turno;    
+    long turno;
 };
 
+struct ResultadoVerificacion {
+    bool valida;
+    long evidencia;
+};
 
 extern thread_local int id_hebra;
+
+ResultadoVerificacion verificar_traza(
+    const std::vector<AnotacionTraza>& traza,
+    Politica politica
+);
