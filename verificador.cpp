@@ -21,6 +21,8 @@ ResultadoVerificacion verificar_traza(
     std::unordered_set<int> lectores_activos;
 
     int escritor_activo = -1;
+    int lectores_pendientes = 0;
+    int escritores_pendientes = 0;
 
     for (const AnotacionTraza& evento : traza) {
         EstadoHebra& estado = estados[evento.hebra];
@@ -34,6 +36,13 @@ ResultadoVerificacion verificar_traza(
 
             estado.tipo = evento.tipo;
             estado.pendiente = true;
+
+            if (evento.tipo == Tipo::Lectora){
+                ++lectores_pendientes;
+            }else{
+                ++escritores_pendientes;
+            }
+
             break;
 
         case Accion::Entra:
@@ -43,14 +52,22 @@ ResultadoVerificacion verificar_traza(
             }
 
             if (evento.tipo == Tipo::Lectora) {
-                if (escritor_activo != -1) {
+                if (escritor_activo != -1) {//rechaza la entrad si hay un escritor activo
                     resultado.valida = false;
                     return resultado;
                 }
+                //rechaza la entrrada de una lectora si hay una escritora esperando, prioridad de escritoras
+                if (politica == Politica::Escritores && escritores_pendientes > 0){
+                    resultado.valida = false;
+                    return resultado;
+                }
+                --lectores_pendientes;//indica que la lectora dejo de estar pendiente
 
+
+                //aca se actualiza el estado de la hebra, ya no espera y esta dentro de la seccion critica
                 estado.pendiente = false;
                 estado.activa = true;
-                lectores_activos.insert(evento.hebra);
+                lectores_activos.insert(evento.hebra);//registra que esa lectora esta activa
             } else {
                 if (escritor_activo != -1 || !lectores_activos.empty()) {
                     resultado.valida = false;
