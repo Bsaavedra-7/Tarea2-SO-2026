@@ -86,6 +86,12 @@ ResultadoVerificacion verificar_traza(
                     return resultado;
                 }
 
+                --escritores_pendientes;
+
+                if (politica == Politica::Escritores && lectores_pendientes > 0){
+                    ++resultado.evidencia;
+                }
+
                 estado.pendiente = false;
                 estado.activa = true;
                 escritor_activo = evento.hebra;
