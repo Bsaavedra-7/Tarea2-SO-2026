@@ -96,7 +96,7 @@ ResultadoVerificacion verificar_traza(
                 estado.activa = true;
                 escritor_activo = evento.hebra;
             }
-
+//a
             break;
 
         case Accion::Sale:
