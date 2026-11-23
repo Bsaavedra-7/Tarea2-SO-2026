@@ -5,30 +5,37 @@
 
 thread_local int id_hebra = -1;
 
+// la funcion que recibe la traza y devuelve la validez de dicha traza y la evidencia de ello
 ResultadoVerificacion verificar_traza(
     const std::vector<AnotacionTraza>& traza,
     Politica politica
 ) {
-    ResultadoVerificacion resultado{true, 0};
+    ResultadoVerificacion resultado{true, 0};// se asume que la traza es valida, se cambia si se encuentra una incoherencia
 
+    // ocupo la estructura para guardar la situacion de cada hebra
     struct EstadoHebra {
-        Tipo tipo;
+        Tipo tipo;//lectora o escritora
         bool pendiente = false;
         bool activa = false;
     };
 
-    std::unordered_map<int, EstadoHebra> estados;
+    std::unordered_map<int, EstadoHebra> estados;//guarda estados de cada hebra
     std::unordered_set<int> lectores_activos;
 
+
+    //contadores generales pra las hebras
     int escritor_activo = -1;
     int lectores_pendientes = 0;
     int escritores_pendientes = 0;
 
+
+    //recorer la traza
     for (const AnotacionTraza& evento : traza) {
-        EstadoHebra& estado = estados[evento.hebra];
+        EstadoHebra& estado = estados[evento.hebra];//esto permite actualizar la info de la hebra
 
         switch (evento.accion) {
         case Accion::Pide:
+            //primero verifica que la hebra no este actuva o esperando
             if (estado.pendiente || estado.activa) {
                 resultado.valida = false;
                 return resultado;
@@ -37,6 +44,7 @@ ResultadoVerificacion verificar_traza(
             estado.tipo = evento.tipo;
             estado.pendiente = true;
 
+            //aumenta el contador correspondiente
             if (evento.tipo == Tipo::Lectora){
                 ++lectores_pendientes;
             }else{
@@ -46,6 +54,7 @@ ResultadoVerificacion verificar_traza(
             break;
 
         case Accion::Entra:
+        //no puede entrar una hebra que no haya hecho Pide antes
             if (!estado.pendiente || estado.tipo != evento.tipo) {
                 resultado.valida = false;
                 return resultado;
@@ -100,12 +109,13 @@ ResultadoVerificacion verificar_traza(
             break;
 
         case Accion::Sale:
+        //comprueba que estuviera activa la hebra
             if (!estado.activa || estado.tipo != evento.tipo) {
                 resultado.valida = false;
                 return resultado;
             }
 
-            estado.activa = false;
+            estado.activa = false;//se desactiva
 
             if (evento.tipo == Tipo::Lectora) {
                 lectores_activos.erase(evento.hebra);
@@ -117,7 +127,8 @@ ResultadoVerificacion verificar_traza(
         }
     }
 
-    for (const auto& par : estados) {
+    //al final se verifica que no queden hebras
+    for (const auto& par : estados) {//se ocupa auto& para deducir el tipo y referenciarlo no usarlo directamente, osea revisa que el estado de la hebra nos ea pendiente
         if (par.second.pendiente || par.second.activa) {
             resultado.valida = false;
             return resultado;
