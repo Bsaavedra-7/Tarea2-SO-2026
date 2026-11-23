@@ -61,6 +61,12 @@ ResultadoVerificacion verificar_traza(
                     resultado.valida = false;
                     return resultado;
                 }
+
+                if (politica == Politica::Lectores && escritores_pendientes > 0){
+                    ++resultado.evidencia;
+                }
+
+
                 --lectores_pendientes;//indica que la lectora dejo de estar pendiente
 
 
@@ -70,6 +76,12 @@ ResultadoVerificacion verificar_traza(
                 lectores_activos.insert(evento.hebra);//registra que esa lectora esta activa
             } else {
                 if (escritor_activo != -1 || !lectores_activos.empty()) {
+                    resultado.valida = false;
+                    return resultado;
+                }
+
+                //con prioridad de lectores una escritora no puede entrar is hay una lectora esperando
+                if (politica == Politica::Lectores && lectores_pendientes > 0){
                     resultado.valida = false;
                     return resultado;
                 }
