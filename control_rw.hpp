@@ -1,3 +1,5 @@
+#pragma once
+
 /* 
 En este archivo se define la clase ControlRW, con los metodos 
   entrar_lectura,

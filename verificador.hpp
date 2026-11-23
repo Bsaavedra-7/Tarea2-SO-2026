@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 
 /* 
@@ -25,5 +26,17 @@ struct AnotacionTraza {
     long turno;    
 };
 
+struct ResultadoVerificacion {
+    bool valida;
+    long evidencia;
+};
+
 
 extern thread_local int id_hebra;
+
+
+
+ResultadoVerificacion verificar_traza(
+    const std::vector<AnotacionTraza>& traza,
+    Politica politica
+);

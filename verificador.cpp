@@ -1,3 +1,4 @@
+#include "verificador.hpp"
 /* 
 R6
 
@@ -5,3 +6,5 @@ implementa verificar_traza() que recorre el historial de eventos generados por e
 para verificar que ningua regla de prioridad o exclusion mutua haya sido pasada por alto y calcular el indicador de evidencia.
 
 */
+
+thread_local int id_hebra = -1;
