@@ -1,4 +1,4 @@
-## 3. Diseño de ControlAtomicoRW
+## 3. Diseño de control_atomico_rw
 
 La clase aplica prioridad de escritores mediante una palabra atómica de 64 bits inicializada en cero. Los bits 0 a 9 cuentan lectoras activas, el bit 10 indica si una escritora está activa y los bits 11 a 20 cuentan escritoras pendientes. Los bits restantes quedan en cero. Cada contador admite hasta 1023 y cada hebra representa como máximo una solicitud a la vez. El límite de 1000 hebras evita que un incremento invada el campo vecino.
 
