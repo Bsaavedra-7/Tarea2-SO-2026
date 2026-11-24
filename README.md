@@ -4,8 +4,8 @@ En esta tarea se implementa un problema de sincronizacion en **C++17**  de **Lec
 
 
 ## Integrantes
-- Rodrigo Domingo Larenas
-- Nicolas Garcia Medina
+- Rodrigo Dominguez Larenas
+- Nicholas Garcia Medina
 - Felipe Grandon Contreras
 - Benjamin Saavedra Uribe
 

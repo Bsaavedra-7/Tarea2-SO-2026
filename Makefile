@@ -10,3 +10,13 @@ $(TARGET): $(SRCS)
 
 clean:
 	rm -f $(TARGET)
+
+
+run: rw
+	./rw cond escritores 1 1 1 0 0
+
+run-lectores: rw
+	./rw cond lectores 2 1 1 0 0
+
+run-fifo: rw
+	./rw cond fifo 2 1 1 0 0
