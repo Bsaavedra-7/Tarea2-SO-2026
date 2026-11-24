@@ -29,12 +29,30 @@ ResultadoVerificacion verificar_traza(
     int escritores_pendientes = 0;
 
 
+    long siguiente_turno_pedido = 0;
+    long siguiente_turno_entrada = 0;
+
     //recorer la traza
     for (const AnotacionTraza& evento : traza) {
         EstadoHebra& estado = estados[evento.hebra];//esto permite actualizar la info de la hebra
 
         switch (evento.accion) {
         case Accion::Pide:
+
+            if (politica == Politica::Fifo){
+                if (evento.turno != siguiente_turno_pedido){
+                    resultado.valida = false;
+                    return resultado;
+                }
+
+                ++siguiente_turno_pedido;
+            }else if (evento.turno != -1) {
+                resultado.valida = false;
+                return resultado;
+            }
+
+
+
             //primero verifica que la hebra no este actuva o esperando
             if (estado.pendiente || estado.activa) {
                 resultado.valida = false;
@@ -56,6 +74,13 @@ ResultadoVerificacion verificar_traza(
         case Accion::Entra:
         //no puede entrar una hebra que no haya hecho Pide antes
             if (!estado.pendiente || estado.tipo != evento.tipo) {
+                resultado.valida = false;
+                return resultado;
+            }
+
+            //esto evita que entre una hebra con turno 1 cuando todavia corresponde el turno 0
+            if (politica == Politica::Fifo &&
+                evento.turno != siguiente_turno_entrada) {
                 resultado.valida = false;
                 return resultado;
             }
@@ -106,6 +131,11 @@ ResultadoVerificacion verificar_traza(
                 escritor_activo = evento.hebra;
             }
 //a
+
+            if (politica == Politica::Fifo){
+                ++siguiente_turno_entrada;
+            }
+
             break;
 
         case Accion::Sale:

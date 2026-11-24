@@ -62,7 +62,10 @@ int main() {
     std::vector<AnotacionTraza> fifo_invalida = {
         {1, Tipo::Lectora, Accion::Pide, 0},
         {2, Tipo::Escritora, Accion::Pide, 1},
-        {2, Tipo::Escritora, Accion::Entra, 1}
+        {2, Tipo::Escritora, Accion::Entra, 1},
+        {2, Tipo::Escritora, Accion::Sale, 1},
+        {1, Tipo::Lectora, Accion::Entra, 0},
+        {1, Tipo::Lectora, Accion::Sale, 0}
     };
 
     bool correcto = true;
