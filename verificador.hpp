@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <string>
 #include <vector>
 
 /* 
@@ -28,8 +30,10 @@ struct AnotacionTraza {
 };
 
 struct ResultadoVerificacion {
-    bool valida;
-    long evidencia;
+    bool valida = true;
+    long evidencia = 0;
+    std::size_t anotacion_error = 0; // indice desde 0; traza.size() si falta una anotacion final
+    std::string regla_incumplida;
 };
 
 extern thread_local int id_hebra;
