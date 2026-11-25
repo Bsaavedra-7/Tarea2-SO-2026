@@ -1,169 +1,148 @@
 #include "verificador.hpp"
 
 #include <unordered_map>
-#include <unordered_set>
 
 thread_local int id_hebra = -1;
 
-// la funcion que recibe la traza y devuelve la validez de dicha traza y la evidencia de ello
 ResultadoVerificacion verificar_traza(
     const std::vector<AnotacionTraza>& traza,
     Politica politica
 ) {
-    ResultadoVerificacion resultado{true, 0};// se asume que la traza es valida, se cambia si se encuentra una incoherencia
-
-    // ocupo la estructura para guardar la situacion de cada hebra
     struct EstadoHebra {
-        Tipo tipo;//lectora o escritora
+        Tipo tipo = Tipo::Lectora;
         bool pendiente = false;
         bool activa = false;
+        long turno = -1;
     };
 
-    std::unordered_map<int, EstadoHebra> estados;//guarda estados de cada hebra
-    std::unordered_set<int> lectores_activos;
-
-
-    //contadores generales pra las hebras
-    int escritor_activo = -1;
-    int lectores_pendientes = 0;
-    int escritores_pendientes = 0;
-
-
+    ResultadoVerificacion resultado;
+    std::unordered_map<int, EstadoHebra> estados;
+    long lectoras_activas = 0;
+    long lectoras_pendientes = 0;
+    long escritoras_pendientes = 0;
+    int escritora_activa = -1;
     long siguiente_turno_pedido = 0;
     long siguiente_turno_entrada = 0;
+    int lectora_que_debe_entrar = -1;
 
-    //recorer la traza
-    for (const AnotacionTraza& evento : traza) {
-        EstadoHebra& estado = estados[evento.hebra];//esto permite actualizar la info de la hebra
+    auto fallo = [&](std::size_t indice, const char* regla) {
+        resultado.valida = false;
+        resultado.anotacion_error = indice;
+        resultado.regla_incumplida = regla;
+        return resultado;
+    };
 
-        switch (evento.accion) {
-        case Accion::Pide:
+    for (std::size_t i = 0; i < traza.size(); ++i) {
+        const auto& evento = traza[i];
 
-            if (politica == Politica::Fifo){
-                if (evento.turno != siguiente_turno_pedido){
-                    resultado.valida = false;
-                    return resultado;
+        // En prioridad de lectoras, Pide y Entra son consecutivos si no hay escritora activa.
+        if (lectora_que_debe_entrar != -1) {
+            if (evento.hebra != lectora_que_debe_entrar ||
+                evento.tipo != Tipo::Lectora || evento.accion != Accion::Entra) {
+                return fallo(i, "lectora debe entrar inmediatamente despues de Pide");
+            }
+            lectora_que_debe_entrar = -1;
+        }
+
+        auto& estado = estados[evento.hebra];
+        if (evento.accion == Accion::Pide) {
+            if (estado.pendiente || estado.activa) {
+                return fallo(i, "solicitud duplicada de una hebra");
+            }
+            if (politica == Politica::Fifo) {
+                if (evento.turno != siguiente_turno_pedido) {
+                    return fallo(i, "turnos de solicitud FIFO no consecutivos");
                 }
-
                 ++siguiente_turno_pedido;
-            }else if (evento.turno != -1) {
-                resultado.valida = false;
-                return resultado;
+            } else if (evento.turno != -1) {
+                return fallo(i, "turno debe ser -1 fuera de FIFO");
             }
 
-
-
-            //primero verifica que la hebra no este actuva o esperando
-            if (estado.pendiente || estado.activa) {
-                resultado.valida = false;
-                return resultado;
+            // R6 mide solicitudes de lectoras mientras hay escritoras pendientes.
+            if (politica == Politica::Escritores &&
+                evento.tipo == Tipo::Lectora && escritoras_pendientes > 0) {
+                ++resultado.evidencia;
+            }
+            if (politica == Politica::Lectores &&
+                evento.tipo == Tipo::Lectora && escritora_activa == -1) {
+                lectora_que_debe_entrar = evento.hebra;
             }
 
             estado.tipo = evento.tipo;
+            estado.turno = evento.turno;
             estado.pendiente = true;
-
-            //aumenta el contador correspondiente
-            if (evento.tipo == Tipo::Lectora){
-                ++lectores_pendientes;
-            }else{
-                ++escritores_pendientes;
+            if (evento.tipo == Tipo::Lectora) {
+                ++lectoras_pendientes;
+            } else {
+                ++escritoras_pendientes;
             }
-
-            break;
-
-        case Accion::Entra:
-        //no puede entrar una hebra que no haya hecho Pide antes
+        } else if (evento.accion == Accion::Entra) {
             if (!estado.pendiente || estado.tipo != evento.tipo) {
-                resultado.valida = false;
-                return resultado;
+                return fallo(i, "Entra sin Pide correspondiente");
             }
-
-            //esto evita que entre una hebra con turno 1 cuando todavia corresponde el turno 0
+            if (evento.turno != estado.turno) {
+                return fallo(i, "turno distinto al registrado en Pide");
+            }
             if (politica == Politica::Fifo &&
                 evento.turno != siguiente_turno_entrada) {
-                resultado.valida = false;
-                return resultado;
+                return fallo(i, "ingresos fuera del orden FIFO");
             }
 
             if (evento.tipo == Tipo::Lectora) {
-                if (escritor_activo != -1) {//rechaza la entrad si hay un escritor activo
-                    resultado.valida = false;
-                    return resultado;
+                if (escritora_activa != -1) {
+                    return fallo(i, "lectora coincide con escritora activa");
                 }
-                //rechaza la entrrada de una lectora si hay una escritora esperando, prioridad de escritoras
-                if (politica == Politica::Escritores && escritores_pendientes > 0){
-                    resultado.valida = false;
-                    return resultado;
+                if (politica == Politica::Escritores && escritoras_pendientes > 0) {
+                    return fallo(i, "lectora entra con escritoras pendientes");
                 }
-
-                if (politica == Politica::Lectores && escritores_pendientes > 0){
+                if (politica == Politica::Lectores && escritoras_pendientes > 0) {
                     ++resultado.evidencia;
                 }
-
-
-                --lectores_pendientes;//indica que la lectora dejo de estar pendiente
-
-
-                //aca se actualiza el estado de la hebra, ya no espera y esta dentro de la seccion critica
-                estado.pendiente = false;
-                estado.activa = true;
-                lectores_activos.insert(evento.hebra);//registra que esa lectora esta activa
+                if (politica == Politica::Fifo && lectoras_activas > 0) {
+                    ++resultado.evidencia;
+                }
+                --lectoras_pendientes;
+                ++lectoras_activas;
             } else {
-                if (escritor_activo != -1 || !lectores_activos.empty()) {
-                    resultado.valida = false;
-                    return resultado;
+                if (escritora_activa != -1 || lectoras_activas > 0) {
+                    return fallo(i, "escritora entra con otra hebra activa");
                 }
-
-                //con prioridad de lectores una escritora no puede entrar is hay una lectora esperando
-                if (politica == Politica::Lectores && lectores_pendientes > 0){
-                    resultado.valida = false;
-                    return resultado;
+                if (politica == Politica::Lectores && lectoras_pendientes > 0) {
+                    return fallo(i, "escritora entra con lectoras pendientes");
                 }
-
-                --escritores_pendientes;
-
-                if (politica == Politica::Escritores && lectores_pendientes > 0){
-                    ++resultado.evidencia;
-                }
-
-                estado.pendiente = false;
-                estado.activa = true;
-                escritor_activo = evento.hebra;
+                --escritoras_pendientes;
+                escritora_activa = evento.hebra;
             }
-//a
-
-            if (politica == Politica::Fifo){
+            estado.pendiente = false;
+            estado.activa = true;
+            if (politica == Politica::Fifo) {
                 ++siguiente_turno_entrada;
             }
-
-            break;
-
-        case Accion::Sale:
-        //comprueba que estuviera activa la hebra
+        } else if (evento.accion == Accion::Sale) {
             if (!estado.activa || estado.tipo != evento.tipo) {
-                resultado.valida = false;
-                return resultado;
+                return fallo(i, "Sale sin Entra correspondiente");
             }
-
-            estado.activa = false;//se desactiva
-
+            if (evento.turno != estado.turno) {
+                return fallo(i, "turno distinto al registrado en Pide");
+            }
+            estado.activa = false;
             if (evento.tipo == Tipo::Lectora) {
-                lectores_activos.erase(evento.hebra);
+                --lectoras_activas;
             } else {
-                escritor_activo = -1;
+                escritora_activa = -1;
             }
-
-            break;
+        } else {
+            return fallo(i, "accion desconocida");
         }
     }
 
-    //al final se verifica que no queden hebras
-    for (const auto& par : estados) {//se ocupa auto& para deducir el tipo y referenciarlo no usarlo directamente, osea revisa que el estado de la hebra nos ea pendiente
+    if (lectora_que_debe_entrar != -1) {
+        return fallo(traza.size(), "falta Entra inmediatamente despues de Pide");
+    }
+    for (const auto& par : estados) {
         if (par.second.pendiente || par.second.activa) {
-            resultado.valida = false;
-            return resultado;
+            return fallo(traza.size(), "solicitud sin Entra o Sale final");
         }
     }
-
     return resultado;
 }
