@@ -390,6 +390,7 @@ int main(int argc, char* argv[]) {
               << " espera_escritoras_max_us=" << max_esp_esc << "\n";
     std::cout << "correcto=" << (invariantes_ok ? "SI" : "NO") << "\n";
 
+    bool politica_ok = true;
     if (cfg.es_atomico) {
         std::cout << "fallos_recurso_ocupado=" << total_fallos.recurso_ocupado
                   << " fallos_escritoras_esperando=" << total_fallos.escritoras_esperando
@@ -397,9 +398,14 @@ int main(int argc, char* argv[]) {
     } else if (cfg.con_traza && monitor_ptr != nullptr) {
         auto traza = monitor_ptr->obtener_traza();
         ResultadoVerificacion res = verificar_traza(traza, cfg.politica);
+        politica_ok = res.valida;
         std::cout << "politica_ok=" << (res.valida ? "SI" : "NO")
                   << " evidencia=" << res.evidencia << "\n";
+        if (!res.valida) {
+            std::cout << "anotacion_error=" << res.anotacion_error
+                      << " regla_incumplida=" << res.regla_incumplida << "\n";
+        }
     }
 
-    return invariantes_ok ? 0 : 1;
+    return (invariantes_ok && politica_ok) ? 0 : 1;
 }
