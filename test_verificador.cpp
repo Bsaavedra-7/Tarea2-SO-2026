@@ -26,8 +26,8 @@ bool comprobar(
 
 int main() {
     std::vector<AnotacionTraza> lectores_valida = {
-        {1, Tipo::Lectora, Accion::Pide, -1},
         {2, Tipo::Escritora, Accion::Pide, -1},
+        {1, Tipo::Lectora, Accion::Pide, -1},
         {1, Tipo::Lectora, Accion::Entra, -1},
         {1, Tipo::Lectora, Accion::Sale, -1},
         {2, Tipo::Escritora, Accion::Entra, -1},
