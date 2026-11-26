@@ -9,6 +9,23 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <string>/**
+ * @file rw.cpp
+ * @brief Orquestador de linea de comandos, ejecucion concurrente y reporte de metricas
+ *        para el problema de Lectores y Escritores (modos "cond" y "atomic").
+ */
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -20,6 +37,9 @@
 
 namespace {
 
+/**
+ * @brief Parametros validados recibidos por linea de comandos.
+ */
 struct ConfigCLI {
     std::string modo_str;
     std::string politica_str;
@@ -33,6 +53,9 @@ struct ConfigCLI {
     bool con_traza = true;
 };
 
+/**
+ * @brief Parsea una cadena como entero long validando rango y formato completo.
+ */
 bool parse_long_estricto(const char* texto, long& salida) {
     if (texto == nullptr || *texto == '\0') {
         return false;
@@ -51,6 +74,9 @@ bool parse_long_estricto(const char* texto, long& salida) {
     return true;
 }
 
+/**
+ * @brief Comprueba que los productos con K no desborden el tipo long usando __int128.
+ */
 bool verificar_productos_sin_overflow(long L, long E, long K) {
     // Usamos __int128 en GCC/Clang en Linux de 64 bits para evitar overflow intermedio
     __int128 l128 = static_cast<__int128>(L);
@@ -64,6 +90,9 @@ bool verificar_productos_sin_overflow(long L, long E, long K) {
     return dos_ek <= long_max && total_op <= long_max;
 }
 
+/**
+ * @brief Valida y carga los argumentos del programa en ConfigCLI.
+ */
 bool parsear_argumentos(int argc, char* argv[], ConfigCLI& cfg) {
     if (argc < 8 || argc > 9) {
         std::cerr << "Uso: ./rw <modo> <politica> <L> <E> <K> <dur_lec_us> <dur_esc_us> [notraza]\n";
@@ -108,7 +137,10 @@ bool parsear_argumentos(int argc, char* argv[], ConfigCLI& cfg) {
         return false;
     }
 
-    if (cfg.L < 1 || cfg.E < 1 || (cfg.L + cfg.E) > 1000 || cfg.K < 1 ||
+    // Evaluamos L + E en long long para evitar desbordamiento antes de comprobar el limite
+    const long long suma_le = static_cast<long long>(cfg.L) + static_cast<long long>(cfg.E);
+    if (cfg.L < 1 || cfg.E < 1 || cfg.L > 1000 || cfg.E > 1000 ||
+        suma_le > 1000LL || cfg.K < 1 ||
         cfg.dur_lec_us < 0 || cfg.dur_esc_us < 0) {
         std::cerr << "Error: valores fuera del rango permitido (L>=1, E>=1, L+E<=1000, K>=1, dur>=0)\n";
         return false;
@@ -134,6 +166,9 @@ bool parsear_argumentos(int argc, char* argv[], ConfigCLI& cfg) {
     return true;
 }
 
+/**
+ * @brief Mide el tiempo de CPU acumulado del proceso en segundos.
+ */
 double tiempo_cpu_proceso_seg() {
     struct timespec ts {};
     if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts) != 0) {
@@ -142,6 +177,9 @@ double tiempo_cpu_proceso_seg() {
     return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) * 1e-9;
 }
 
+/**
+ * @brief Contadores atomicos para detectar violaciones de exclusion mutua e inconsistencias.
+ */
 struct DiagnosticoRW {
     std::atomic<long> lectoras_activas{0};
     std::atomic<long> escritoras_activas{0};
@@ -150,6 +188,9 @@ struct DiagnosticoRW {
     std::atomic<long> violaciones_exclusion{0};
 };
 
+/**
+ * @brief Metricas locales acumuladas por cada hebra (esperas y fallos atomicos).
+ */
 struct MetricasHebra {
     double suma_espera_us = 0.0;
     double max_espera_us = 0.0;
@@ -157,6 +198,9 @@ struct MetricasHebra {
     FallosAdmision fallos_atomicos{};
 };
 
+/**
+ * @brief Actualiza de forma atomica el maximo de lectoras concurrentes.
+ */
 void actualizar_max_lectoras(std::atomic<long>& max_lec, long actual) {
     long prev = max_lec.load(std::memory_order_relaxed);
     while (actual > prev &&
@@ -174,13 +218,14 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Instancia el control de sincronizacion y propaga notraza (cfg.con_traza) al monitor
     std::unique_ptr<ControlRW> control;
     MonitorRW* monitor_ptr = nullptr;
 
     if (cfg.es_atomico) {
         control = std::make_unique<ControlAtomicoRW>();
     } else {
-        auto mon = std::make_unique<MonitorRW>(cfg.politica);
+        auto mon = std::make_unique<MonitorRW>(cfg.politica, cfg.con_traza);
         monitor_ptr = mon.get();
         control = std::move(mon);
     }
@@ -188,7 +233,8 @@ int main(int argc, char* argv[]) {
     Registro registro;
     DiagnosticoRW diag;
 
-    const std::size_t total_hebras = static_cast<std::size_t>(cfg.L + cfg.E);
+    const long long suma_le = static_cast<long long>(cfg.L) + static_cast<long long>(cfg.E);
+    const std::size_t total_hebras = static_cast<std::size_t>(suma_le);
     std::vector<std::thread> hebras;
     hebras.reserve(total_hebras);
     std::vector<MetricasHebra> metricas(total_hebras);
@@ -198,6 +244,7 @@ int main(int argc, char* argv[]) {
 
     bool error_creacion_hebras = false;
 
+    // Rutina de hebra lectora: mide espera, comprueba exclusion/consistencia y lee Registro
     auto rutina_lectora = [&](int idx, int id_logico) {
         id_hebra = id_logico;
         auto& m_hebra = metricas[static_cast<std::size_t>(idx)];
@@ -240,6 +287,7 @@ int main(int argc, char* argv[]) {
         }
     };
 
+    // Rutina de hebra escritora: mide espera, verifica exclusion mutua y actualiza Registro
     auto rutina_escritora = [&](int idx, int id_logico) {
         id_hebra = id_logico;
         auto& m_hebra = metricas[static_cast<std::size_t>(idx)];
@@ -278,6 +326,7 @@ int main(int argc, char* argv[]) {
         }
     };
 
+    // Crea las hebras lectoras y luego las escritoras
     for (long i = 0; i < cfg.L; ++i) {
         int idx = static_cast<int>(hebras.size());
         int id_logico = idx;
@@ -322,6 +371,7 @@ int main(int argc, char* argv[]) {
         std::chrono::duration<double>(pared_fin - pared_inicio).count();
     const double tiempo_cpu_seg = std::max(0.0, cpu_fin - cpu_inicio);
 
+    // Consolida tiempos de espera y fallos de admision de todas las hebras
     double suma_esp_lec = 0.0;
     double max_esp_lec = 0.0;
     long cnt_lec = 0;
@@ -368,6 +418,7 @@ int main(int argc, char* argv[]) {
         (inconsistencias == 0) &&
         (violaciones_excl == 0);
 
+    // Imprime el resumen de ejecucion y metricas finales
     std::cout << std::fixed << std::setprecision(3);
     std::cout << "modo=" << cfg.modo_str
               << " politica=" << cfg.politica_str
@@ -403,3 +454,4 @@ int main(int argc, char* argv[]) {
 
     return invariantes_ok ? 0 : 1;
 }
+
